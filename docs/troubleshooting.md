@@ -63,3 +63,28 @@ Flask's built-in development server is not suitable for production deployment. A
 All testing was performed locally using Docker Desktop and WSL2.
 
 No AWS resources were created.
+## 8. Continuous Integration Verification
+
+GitHub Actions workflow: `CloudForge CI`
+
+Trigger: Push to `main` or pull request targeting `main`.
+
+Verified workflow steps:
+
+- Repository checkout: Passed
+- Python setup: Passed
+- Dependency installation: Passed
+- Automated tests: Passed (3 tests)
+- Docker image build: Passed
+- Job completion: Passed
+
+GitHub Actions run:
+- Commit: `90f584f`
+- Branch: `main`
+- Overall result: Success
+- Total workflow duration: 29 seconds
+
+The CI workflow validates the application and builds
+the Docker image on a GitHub-hosted runner.
+
+No AWS infrastructure was deployed by this workflow.
