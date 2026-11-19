@@ -127,3 +127,97 @@ consistency before running tests and building the Docker image.
 The workflow runs on GitHub-hosted infrastructure.
 
 No AWS resources were created or deployed.
+
+## 10. Gunicorn Migration and Verification
+
+### 10.1 Why Gunicorn Was Introduced
+
+The earlier container used Flask's built-in development server.
+This was replaced with Gunicorn, a production-oriented WSGI server,
+to serve the Flask application.
+
+### 10.2 Dependency Update
+
+The following dependency was added to `requirements.txt`:
+
+- Flask: 3.1.3
+- Gunicorn: 23.0.0
+
+### 10.3 Docker Startup Configuration
+
+The Dockerfile now starts the application using:
+
+`gunicorn --bind 0.0.0.0:5000 --workers 2 --threads 4 --timeout 30 application.app:app`
+
+Configuration:
+
+- Bind address: `0.0.0.0:5000`
+- Workers: 2
+- Threads per worker: 4
+- Request timeout: 30 seconds
+- WSGI application: `application.app:app`
+- Runtime user: `appuser`
+
+### 10.4 Updated Container
+
+- Image: `cloudforge:1.2`
+- Container: `cloudforge-app-v1.2`
+- Host binding: `127.0.0.1:5001`
+- Container port: `5000`
+- Memory limit: 256 MB
+- CPU limit: 1 CPU
+- Process limit: 100
+- Linux capabilities: All dropped
+- No-new-privileges: Enabled
+- Root filesystem: Read-only
+- Temporary filesystem: `/tmp`, 64 MB, `noexec`, `nosuid`
+- Restart policy: `no`
+
+### 10.5 Application Verification
+
+The following endpoints were tested through the new container:
+
+| Endpoint | HTTP status | Result |
+|---|---|---|
+| `/` | 200 OK | Passed |
+| `/health` | 200 OK | Passed |
+| `/api/info` | 200 OK | Passed |
+
+The health endpoint returned:
+
+`{"status":"healthy"}`
+
+The HTTP response identified Gunicorn as the server.
+Docker reported the container health as `healthy`.
+
+### 10.6 Updated GitHub Actions Verification
+
+GitHub Actions workflow: `CloudForge CI`
+
+- Run: #5
+- Commit: `f622208`
+- Branch: `main`
+- Overall result: Success
+- Total duration: 17 seconds
+
+Verified steps:
+
+- Repository checkout: Passed
+- Python setup: Passed
+- Dependency installation: Passed
+- Python syntax check: Passed
+- Dependency consistency check: Passed
+- Automated tests: Passed
+- Docker image build: Passed
+
+A non-blocking Node.js 20 deprecation warning was displayed
+for the existing GitHub Actions dependencies.
+
+### 10.7 Cost and Infrastructure
+
+The Gunicorn migration and container verification were performed
+locally using Docker Desktop and WSL2.
+
+GitHub Actions ran the CI workflow on GitHub-hosted infrastructure.
+
+No AWS resources were created or deployed.
