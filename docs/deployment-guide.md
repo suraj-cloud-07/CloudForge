@@ -2,14 +2,15 @@
 
 ## 1. Purpose
 
-This document describes the planned deployment process for CloudForge.
+This document describes the CloudForge deployment process.
 
-The first implementation will use a local Docker deployment simulation.
+The current implementation uses local Docker deployment simulations to test deployment safety, health checks, and rollback protection.
+
 AWS deployment will be considered only after local testing and cost review.
 
 ## 2. Deployment Architecture
 
-The planned deployment lifecycle is:
+The deployment lifecycle is:
 
 1. Developer updates application code.
 2. GitHub Actions runs Continuous Integration.
@@ -17,9 +18,12 @@ The planned deployment lifecycle is:
 4. Docker builds the application image.
 5. The image is tagged with a version.
 6. Production deployment requires manual approval.
-7. A local deployment script starts the Docker container.
-8. Application health checks verify successful deployment.
-9. Logs are inspected and rollback is available if deployment fails.
+7. A deployment script starts the candidate container.
+8. Container and application health checks verify the candidate.
+9. The previous known-good version remains available during candidate verification.
+10. A failed candidate is removed without deleting the previous version.
+
+The current deployment workflow is a local blue-green deployment simulation. It does not yet perform production traffic switching.
 
 ## 3. Local Deployment Environment
 
@@ -30,6 +34,7 @@ The local environment uses:
 - Docker Engine
 - Python Flask application
 - Gunicorn application server
+- Bash deployment scripts
 
 No AWS infrastructure is required for this stage.
 
@@ -38,44 +43,78 @@ No AWS infrastructure is required for this stage.
 The deployment process should:
 
 - Use a clearly identifiable Docker image tag.
-- Avoid exposing the application on all host network interfaces.
+- Bind the application to localhost during local testing.
 - Run the container as a non-root user.
-- Apply resource limits.
+- Apply memory, CPU, and process limits.
 - Drop unnecessary Linux capabilities.
-- Enable a container health check.
+- Prevent privilege escalation.
+- Use a read-only container filesystem where practical.
+- Provide a container health check.
 - Avoid automatic restart policies during controlled testing.
 
 ## 5. Health Verification
 
-After deployment, verify:
+The deployment process checks:
 
-- The Docker container is running.
-- The container health status is healthy.
-- The application root endpoint responds successfully.
-- The health endpoint returns HTTP 200.
-- Application logs do not show startup errors.
+- Whether the Docker container starts successfully.
+- Whether the container health status becomes healthy.
+- Whether the application health endpoint returns HTTP 200.
+- Whether the known-good version remains healthy.
 
-## 6. Rollback Strategy
+The application also provides:
 
-The deployment process should retain the previous working image.
+- `/` — application information.
+- `/health` — application health status.
+- `/api/info` — application version and environment information.
 
-If a new deployment fails:
+## 6. Local Deployment and Rollback Protection
 
-1. Stop the failed container.
-2. Start the previous known-good image.
-3. Verify the restored container health.
-4. Inspect logs to identify the failure.
+CloudForge includes two deployment approaches:
 
-The rollback procedure must not delete the previous working image.
+### Local deployment
 
-## 7. Security Requirements
+`scripts/deploy-local.sh` starts a versioned container with security restrictions and verifies its health.
+
+The previous containers and images are preserved.
+
+### Candidate deployment with rollback protection
+
+`scripts/deploy-with-rollback.sh` accepts:
+
+- Candidate image tag.
+- Known-good rollback port.
+- Candidate deployment port.
+
+The script:
+
+1. Checks that the Docker Engine is available.
+2. Verifies that the candidate image exists.
+3. Checks that the known-good rollback endpoint is healthy.
+4. Starts the candidate container on a separate localhost port.
+5. Waits for the candidate container health check.
+6. Verifies the candidate application health endpoint.
+7. Keeps the candidate if both health checks pass.
+8. Removes only the candidate if deployment fails.
+9. Checks that the known-good version remains healthy.
+
+The script also uses shell traps to clean up a candidate container after an interruption such as Ctrl+C or SIGTERM.
+
+SIGKILL cannot be caught by shell traps, so cleanup cannot be guaranteed after that signal or an abrupt system shutdown.
+
+**Important limitation:** This is rollback protection, not a complete production traffic-switching implementation. The known-good version remains available on its existing port; the script does not automatically redirect traffic to it.
+
+Previous working containers and images must not be deleted as part of candidate failure cleanup.
+
+## 7. Deployment Security
 
 - Never store credentials in source code.
 - Do not expose the application publicly during local testing.
 - Run containers with least privilege.
-- Use read-only container filesystems where practical.
-- Apply CPU, memory and process limits.
-- Do not run containers in privileged mode.
+- Use a read-only root filesystem where practical.
+- Apply CPU, memory, and process limits.
+- Drop unnecessary Linux capabilities.
+- Enable `no-new-privileges`.
+- Avoid privileged containers.
 
 ## 8. AWS Migration Plan
 
@@ -110,6 +149,9 @@ Before any AWS deployment:
 - GitHub Actions CI: verified.
 - Production approval gate: verified.
 - Automated local deployment script: completed and tested.
-- Local deployment: cloudforge:1.2 successfully deployed and verified on port 5002.
-- Rollback automation: planned.
+- Local deployment: `cloudforge:1.2` successfully deployed and verified on port `5002`.
+- Candidate deployment with rollback protection: implemented and tested.
+- Candidate cleanup after failed health checks: tested.
+- Candidate cleanup after Ctrl+C interruption: tested.
+- Known-good version health after candidate failure: verified.
 - AWS deployment: not started.
